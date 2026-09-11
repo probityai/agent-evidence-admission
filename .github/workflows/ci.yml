@@ -1,0 +1,180 @@
+name: ci
+
+# Four rails ship here and every one of them is a file that looks correct. The
+# reason this workflow exists is that a policy document is not evidence of
+# anything until something has run it: three of these four artifacts spent
+# months in a repository with no execution of any kind, so every defect ever
+# found in them was found by reading. The `rails` job below runs all four over
+# every vector of a pinned corpus and compares each answer against the oracle.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The corpus these rails are measured against, pinned by tag AND by the commit
+  # that tag resolved to when this pin was written. A tag is a moving reference
+  # until someone promises otherwise, and a workflow that trusts one has vendored
+  # a promise rather than a corpus.
+  VECTORS_REPO: https://github.com/astrogilda/agent-evidence-vectors.git
+  VECTORS_TAG: v0.10.1
+  VECTORS_COMMIT: 6c2fa6cc75b3e4f20368ba1637f56f52ac77b171
+
+  # Engine versions, each with the SHA-256 of the release asset. An unpinned
+  # engine turns a red build into a question about which binary ran.
+  OPA_VERSION: v1.18.0
+  OPA_SHA256: 65d700b14b99b354982b61031b40bdc8e316ea93dadd61818f066d1d9a69dcce
+  KYVERNO_VERSION: v1.18.2
+  KYVERNO_SHA256: cb2feb8356149fd2fe774c894ccf0969f4a60a83867dd913af724f74ffbbc18b
+  CUE_VERSION: v0.17.1
+  CUE_SHA256: a39b0c97695069d95d276d99be0f5dbabb081d801bfdc9ba49b76efaf94e2369
+
+jobs:
+  hygiene:
+    name: hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The whole history, because the mark check below reads every commit that
+      # any ref reaches. A shallow checkout would give it three commits to call
+      # clean, and it refuses to run on one rather than say so.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: every referenced host is on the allowlist
+        run: python3 scripts/host-allowlist-gate.py --list
+      - name: no prose carries an authorship mark or a banned form
+        run: python3 scripts/docs-style-gate.py
+      - name: no commit that any ref reaches carries an authorship mark
+        run: python3 scripts/docs-style-gate.py --history
+      - name: the profile registry is what the maps render
+        run: python3 scripts/gen_profile_registry.py --check
+      - name: the ratchet report agrees with its own data
+        run: python3 scripts/ratchet_report.py --check
+
+  corpus:
+    name: corpus projection
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: clone the vectors at the pinned tag
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --branch "$VECTORS_TAG" "$VECTORS_REPO" "$RUNNER_TEMP/vectors"
+          got="$(git -C "$RUNNER_TEMP/vectors" rev-parse HEAD)"
+          if [ "$got" != "$VECTORS_COMMIT" ]; then
+            echo "tag $VECTORS_TAG resolves to $got, not the pinned $VECTORS_COMMIT" >&2
+            echo "A published tag never moves. Either the pin is stale or the tag did." >&2
+            exit 1
+          fi
+          echo "$VECTORS_TAG is $got, as pinned"
+      - name: the vendored obligation registry is the corpus registry
+        run: python3 scripts/gen_condition_registry.py --check --corpus "$RUNNER_TEMP/vectors"
+      - name: the corpus projection re-derives from that corpus
+        run: python3 rego/gen_corpus_vectors.py --check --corpus "$RUNNER_TEMP/vectors"
+
+  oracle:
+    name: oracle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: install opa
+        run: |
+          set -euo pipefail
+          curl -sSfL -o /tmp/opa \
+            "https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_amd64_static"
+          echo "${OPA_SHA256}  /tmp/opa" | sha256sum -c -
+          chmod +x /tmp/opa
+          sudo mv /tmp/opa /usr/local/bin/opa
+          opa version
+      - name: the module's own suite
+        run: opa test --timeout 300s rego/
+      - name: the deployed manifest still embeds the module verbatim
+        run: python3 policy-controller/gen_soundness_cip.py --check
+
+  rails:
+    name: every rail over the pinned corpus
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install opa
+        run: |
+          set -euo pipefail
+          curl -sSfL -o /tmp/opa \
+            "https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_amd64_static"
+          echo "${OPA_SHA256}  /tmp/opa" | sha256sum -c -
+          chmod +x /tmp/opa
+          sudo mv /tmp/opa /usr/local/bin/opa
+          opa version
+
+      - name: install the kyverno cli
+        run: |
+          set -euo pipefail
+          curl -sSfL -o /tmp/kyverno.tar.gz \
+            "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/kyverno-cli_${KYVERNO_VERSION}_linux_x86_64.tar.gz"
+          echo "${KYVERNO_SHA256}  /tmp/kyverno.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/kyverno.tar.gz -C /tmp kyverno
+          sudo mv /tmp/kyverno /usr/local/bin/kyverno
+          kyverno version
+
+      - name: install cue
+        run: |
+          set -euo pipefail
+          curl -sSfL -o /tmp/cue.tar.gz \
+            "https://github.com/cue-lang/cue/releases/download/${CUE_VERSION}/cue_${CUE_VERSION}_linux_amd64.tar.gz"
+          echo "${CUE_SHA256}  /tmp/cue.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/cue.tar.gz -C /tmp cue
+          sudo mv /tmp/cue /usr/local/bin/cue
+          cue version
+
+      - name: clone the vectors at the pinned tag
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --branch "$VECTORS_TAG" "$VECTORS_REPO" "$RUNNER_TEMP/vectors"
+          got="$(git -C "$RUNNER_TEMP/vectors" rev-parse HEAD)"
+          if [ "$got" != "$VECTORS_COMMIT" ]; then
+            echo "tag $VECTORS_TAG resolves to $got, not the pinned $VECTORS_COMMIT" >&2
+            exit 1
+          fi
+
+      - name: the vectors these rails will run on are that corpus
+        run: |
+          set -euo pipefail
+          python3 scripts/gen_condition_registry.py --check --corpus "$RUNNER_TEMP/vectors"
+          python3 rego/gen_corpus_vectors.py --check --corpus "$RUNNER_TEMP/vectors"
+
+      # The measurement, live. Every rail is run over every vector in the
+      # projection and each answer is compared against the rego oracle's. This
+      # overwrites profiles/ in the working tree on purpose: the diff afterwards
+      # is what says the committed maps are the measurement rather than a claim
+      # about it.
+      - name: measure every rail over every vector
+        run: python3 scripts/gen_profile_map.py --jobs 4
+
+      - name: the committed maps are what the measurement produces
+        run: |
+          set -euo pipefail
+          if ! git diff --exit-code -- profiles/; then
+            echo "" >&2
+            echo "The profile maps on disk are not what a live run of these rails" >&2
+            echo "produces against the pinned corpus. Regenerate them with" >&2
+            echo "scripts/gen_profile_map.py and commit the result." >&2
+            exit 1
+          fi
+
+      # The gate the whole repository exists to pass: a rail may not declare that
+      # it enforces an obligation while the measurement above shows it answering
+      # differently from the oracle on a vector citing that obligation.
+      - name: no rail enforces an obligation it fails a vector of
+        run: python3 scripts/profile-map-gate.py
+
+      - name: the rendered registry still matches the measured maps
+        run: python3 scripts/gen_profile_registry.py --check
