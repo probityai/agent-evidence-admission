@@ -47,6 +47,8 @@ ALLOWED_HOSTS = frozenset(
         "raw.githubusercontent.com",
         "doi.org",
         "orcid.org",
+        # the advisory database the engine gate resolves the pins against
+        "api.osv.dev",
         # the engines
         "openpolicyagent.org",
         "www.openpolicyagent.org",

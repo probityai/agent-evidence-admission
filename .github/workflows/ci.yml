@@ -56,6 +56,29 @@ jobs:
       - name: the ratchet report agrees with its own data
         run: python3 scripts/ratchet_report.py --check
 
+  engines:
+    # The rails run on three third-party binaries. Every one is pinned by
+    # version and by the SHA-256 of its release asset, so a run is
+    # reproducible and the bytes are what the pin says. Neither property says
+    # the pinned version is free of a published advisory, and until this job
+    # existed nothing asked: a green pipeline was a statement about the rails
+    # and said nothing at all about the engines that ran them.
+    #
+    # The gate resolves the same version pins the install steps below use
+    # against the OSV database and fails on any advisory not held in
+    # ENGINE-ADVISORIES.toml with a reason and an expiry. It exits 2, never 0,
+    # when it could not reach the database: an unreachable database and a
+    # clean one are the same silence and only one of them is a result.
+    name: pinned engines against the advisory database
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: the disposition file is complete
+        run: python3 scripts/engine-advisory-gate.py --selftest
+      - name: every pinned engine resolves against OSV
+        run: python3 scripts/engine-advisory-gate.py
+
   corpus:
     name: corpus projection
     runs-on: ubuntu-latest
