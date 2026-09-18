@@ -2239,7 +2239,7 @@ spec:
               # produces is byte-identical to the one an honest producer emits when it genuinely had
               # no coverage of that class, measured over 27 of 27 finding-bearing baselines, on
               # canonical bytes, agreeing across three independent verifier rails
-              # (research/169-aee-v07-design-2026-07-28/SCOPE-AND-BASIS-WITHDRAWAL-DESIGN.md). A
+              # (a private design note on scope and basis withdrawal). A
               # verifier is a function of the statement, so no rule over the carried bytes refuses
               # the withdrawal without refusing the honest producer in the same breath. This is not
               # an argument that the checks above are incomplete. It is an argument that the target
