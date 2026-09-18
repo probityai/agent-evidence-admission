@@ -100,7 +100,19 @@ NOT_A_HOST = re.compile(
 # Where the allowlist itself lives, plus anything binary enough that a line is
 # not a meaningful unit. The allowlist file is skipped because a list of allowed
 # hosts is a list of hosts, and checking it against itself measures nothing.
-SKIP = {"scripts/host-allowlist-gate.py"}
+SKIP = {
+    "scripts/host-allowlist-gate.py",
+    # The same argument as the line above, for three more instruments. A guard
+    # that detects local filesystem paths has to contain the pattern for one; a
+    # commit-message hook proves its refusals with messages carrying the shapes
+    # it rejects; and the permit test asserts which repository URLs pass, which
+    # it can only do by containing them. Each is a file whose subject IS the
+    # thing this gate looks for, so checking it here measures the instrument and
+    # never the prose. Ordinary files stay checked, which is the point.
+    ".githooks/commit-msg",
+    "scripts/pre-push-identity-scan.py",
+    "scripts/pre-push-identity-scan-test.py",
+}
 
 # A citation file carries the author's address because the format requires one,
 # and a repository with no contact is worse than one with a personal address. So
