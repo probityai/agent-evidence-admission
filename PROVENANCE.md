@@ -72,7 +72,7 @@ somewhere else would be a claim about different bytes.
 Not lifted, and not vendored wholesale. `rego/corpus_vectors.json` is a mechanical
 projection of the published conformance corpus, pinned in `.github/workflows/ci.yml`
 to the tag `v0.10.1` of
-[astrogilda/agent-evidence-vectors](https://github.com/astrogilda/agent-evidence-vectors)
+[probityai/agent-evidence-vectors](https://github.com/probityai/agent-evidence-vectors)
 at commit `6c2fa6cc75b3e4f20368ba1637f56f52ac77b171`, corpus digest
 `8b035678def9e5ac00ba761b8c640e4412c57163134afb9d2c1a90f49d573a52`. Continuous
 integration clones that tag, refuses a commit that is not the pinned one, and re-derives
