@@ -22,7 +22,7 @@ env:
   # a promise rather than a corpus.
   VECTORS_REPO: https://github.com/probityai/agent-evidence-vectors.git
   VECTORS_TAG: v0.10.1
-  VECTORS_COMMIT: 6c2fa6cc75b3e4f20368ba1637f56f52ac77b171
+  VECTORS_COMMIT: 93deb470a6d44bfa53cdc2ebfd4fc725e2a21e2b
 
   # Engine versions, each with the SHA-256 of the release asset. An unpinned
   # engine turns a red build into a question about which binary ran.

@@ -155,6 +155,11 @@ EXEMPT = frozenset(
         "rego/corpus_vectors.json",
         "rego/test_consumer_pins.json",
         "profiles/rule-index.json",
+        # A commit-message hook proves its refusals with example messages that
+        # carry the very marks it rejects. Its subject IS the mark table, so
+        # reading it here measures the instrument and never the prose, exactly
+        # as with the four files above whose text this repository did not write.
+        ".githooks/commit-msg",
     }
 )
 
