@@ -7,7 +7,7 @@ approximates, and which it cannot reach at all.
 The predicate is `https://in-toto.io/attestation/adversarial-execution-evidence/v0.7`, under review
 at [in-toto/attestation#570](https://github.com/in-toto/attestation/pull/570). The corpus these
 rails are measured against is
-[astrogilda/agent-evidence-vectors](https://github.com/astrogilda/agent-evidence-vectors), at the
+[probityai/agent-evidence-vectors](https://github.com/probityai/agent-evidence-vectors), at the
 tag `v0.10.1`.
 
 ## Verify the claim in four commands
@@ -17,7 +17,7 @@ Nothing below asks you to trust a table in this repository. From a fresh clone, 
 
 ```bash
 git clone --depth 1 --branch v0.10.1 \
-  https://github.com/astrogilda/agent-evidence-vectors.git /tmp/vectors
+  https://github.com/probityai/agent-evidence-vectors.git /tmp/vectors
 python3 rego/gen_corpus_vectors.py --check --corpus /tmp/vectors
 python3 scripts/gen_profile_map.py --jobs 4 && git diff --exit-code -- profiles/
 python3 scripts/profile-map-gate.py

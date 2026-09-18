@@ -20,7 +20,7 @@ env:
   # that tag resolved to when this pin was written. A tag is a moving reference
   # until someone promises otherwise, and a workflow that trusts one has vendored
   # a promise rather than a corpus.
-  VECTORS_REPO: https://github.com/astrogilda/agent-evidence-vectors.git
+  VECTORS_REPO: https://github.com/probityai/agent-evidence-vectors.git
   VECTORS_TAG: v0.10.1
   VECTORS_COMMIT: 6c2fa6cc75b3e4f20368ba1637f56f52ac77b171
 
