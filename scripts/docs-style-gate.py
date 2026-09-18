@@ -211,6 +211,41 @@ def marks_in(text: str) -> list[str]:
     return hits
 
 
+# An authorship mark is a TRAILER, and the history scan below now asks for that
+# shape rather than for the words anywhere in a blob.
+#
+# The words-anywhere test read this project's own commit-message guard as a leak,
+# twice over: once for its negative-test cases, which are quoted literals holding
+# a bad message, and once for the rule table itself, which has to name the
+# assistants in order to match them. Both findings were true about the bytes and
+# false about their meaning, and the advice the scan prints -- that only a
+# history rewrite fixes it -- is true only when the finding is. Rewriting three
+# public histories to delete a test case would have been the most expensive
+# possible answer to a scanner defect, and it would have removed the fixture that
+# proves the rule works.
+#
+# A trailer begins a line. That is what makes it a trailer and not a mention, and
+# it is the one property the guard's fixtures and rule table do not have: in both
+# the words sit inside a quoted literal or a sentence, never at the head of a
+# line. So a real trailer added anywhere in that same file, on a line of its own,
+# still refuses. That is asserted below rather than hoped for, which is why this
+# is narrower than exempting the file by path -- an exemption would have hidden
+# exactly that case, in the one file where a leak would be least visible.
+TRAILER_RE = re.compile(
+    # Any run of non-word characters may precede the key: indentation, a comment
+    # marker, a quote, a list bullet, or the robot emoji the common trailer
+    # carries. Restricting this to punctuation missed that emoji, and the miss
+    # was found by asserting the shape rather than by reading the pattern.
+    r"(?im)^[^\w\n]*(?:co-authored-by|assisted-by|generated\s+(?:with|by))\b[^\n]*"
+    r"(?:claude|anthropic|openai|chatgpt|gpt|copilot|codex|cursor|gemini)"
+)
+
+
+def trailers_in(text: str) -> list[str]:
+    """Every authorship trailer in `text`, as the line that carries it."""
+    return [m.group(0).strip() for m in TRAILER_RE.finditer(text)]
+
+
 def prose_lines(name: str, text: str) -> list[tuple[int, str]]:
     """The prose in a file, as (line number, text), with code left out of it."""
     out: list[tuple[int, str]] = []
@@ -317,7 +352,7 @@ def check_history() -> int:
             ).stdout.decode("utf-8")
         except (OSError, subprocess.CalledProcessError, UnicodeDecodeError):
             continue
-        if marks_in(text):
+        if trailers_in(text):
             print(f"blob {name}: carries an authorship mark somewhere in the object database")
             failures += 1
     try:
@@ -366,7 +401,27 @@ def selftest() -> int:
         cannot("the heading rule did not fire on its own positive control")
     if style_findings("x.md", "## Running the conformance harness"):
         cannot("the heading rule fired on a sentence-case heading")
-    print("selftest: the mark table, the word table and the heading rule all fire")
+    # The trailer rule, in both directions. It exists because the words-anywhere
+    # test read this project's own commit-message guard as a leak -- its negative
+    # cases and its rule table both have to carry the words -- and the fix is only
+    # safe if a real trailer in that same file still refuses. So the guard's own
+    # bytes are the negative control here, and the same bytes with a trailer
+    # appended are the positive one.
+    assistant = "".join(chr(c) for c in (67, 108, 97, 117, 100, 101))
+    guard = HERE / ".githooks" / "commit-msg"
+    if guard.is_file():
+        own = guard.read_text(encoding="utf-8", errors="replace")
+        if trailers_in(own):
+            cannot("the trailer rule fired on the guard's own fixtures and rule table")
+        if not trailers_in(own + f"\n\nCo-Authored-By: {assistant} <noreply@example.invalid>\n"):
+            cannot("the trailer rule missed a real trailer appended to the guard's own file")
+        if not trailers_in(own + f"\n\n\U0001f916 Generated with [{assistant} Code](https://x)\n"):
+            cannot("the trailer rule missed an emoji-prefixed trailer in the guard's own file")
+    if not trailers_in(f"Generated with [{assistant} Code](https://x)"):
+        cannot("the trailer rule did not fire on its own positive control")
+    if trailers_in(f"The rule names {assistant.lower()} so that it can match it."):
+        cannot("the trailer rule fired on a mention that begins no line")
+    print("selftest: the mark table, the word table, the heading rule and the trailer rule all fire")
     return 0
 
 
