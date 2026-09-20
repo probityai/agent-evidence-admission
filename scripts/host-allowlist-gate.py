@@ -9,8 +9,9 @@ across, a comment restored from an older revision, a generator whose header stil
 carries the URL it was written under.
 
 So the check here is a POSITIVE one. Every hostname any tracked file mentions must
-appear in the allowlist below, and every local filesystem path and mail address is
-refused outright. A negative check would have to spell the strings it forbids,
+appear in the allowlist below, or be a name RFC 2606 reserves so that a document
+can carry a host that resolves to nobody; every local filesystem path and mail
+address is refused outright. A negative check would have to spell the strings it forbids,
 which puts them in the repository that must not carry them; this one never names
 anything it is protecting against, and it catches a host nobody thought to forbid.
 
@@ -72,11 +73,30 @@ ALLOWED_HOSTS = frozenset(
         "www.w3.org",
         "www.rfc-editor.org",
         "datatracker.ietf.org",
-        # a registry host in a sample manifest, and the reserved TLD the rego
-        # tests use for a predicate type that must not resolve to anything
+        # a registry host in a sample manifest
         "ghcr.io",
-        "example.invalid",
     }
+)
+
+# RFC 2606 reserves names that exist so a document can name a host or an address
+# without naming anything real: the top-level domains .test, .example, .invalid
+# and .localhost (section 2), and the second-level names example.com, example.net
+# and example.org (section 3). None of them resolves to anybody, by IETF
+# reservation rather than by anyone's promise, and not resolving to anybody is
+# exactly the property this gate spends its effort establishing. So a reference
+# under one of those names is admitted BY RULE, and a file that needs a host or an
+# address to prove a rule with has a correct name to reach for.
+#
+# The permit is on the SHAPE OF THE NAME and never on the file that carries it,
+# which is what makes it narrower than the path exemption it replaced. Nothing
+# below asks which file a line sits in: an ordinary document may name
+# example.invalid, and a self-test naming a host that is not reserved is refused
+# exactly like any other line would be. Every admission is counted and printed, so
+# the permit can be read off a passing run rather than inferred from the source.
+RESERVED_NAME_RE = re.compile(
+    r"(?:^|\.)(?:test|example|invalid|localhost)\Z"
+    r"|(?:^|\.)example\.(?:com|net|org)\Z",
+    re.IGNORECASE,
 )
 
 URL_RE = re.compile(r"\b(?:https?|ftp)://([A-Za-z0-9._~%-]+(?::[0-9]+)?)")
@@ -162,6 +182,13 @@ def main(argv: list[str]) -> int:
 
     problems: list[str] = []
     seen: Counter[str] = Counter()
+    # What the reserved-name rule let through, by the name that carried it, with
+    # hosts and addresses apart: the listing below counts hosts, so one total
+    # covering both would read as a contradiction of it. Kept at all so a passing
+    # run can say what it admitted -- an exemption nobody can read off the output
+    # is the kind that grows.
+    reserved_hosts: Counter[str] = Counter()
+    reserved_mail: Counter[str] = Counter()
     scanned = 0
 
     for name in tracked_files():
@@ -179,12 +206,24 @@ def main(argv: list[str]) -> int:
             hosts |= {m.group(1).lower() for m in BARE_HOST_RE.finditer(stripped)}
             for host in hosts:
                 seen[host] += 1
-                if host not in ALLOWED_HOSTS:
-                    problems.append(f"{name}:{lineno}: host {host!r} is not allowed: {line.strip()}")
+                if host in ALLOWED_HOSTS:
+                    continue
+                if RESERVED_NAME_RE.search(host):
+                    reserved_hosts[host] += 1
+                    continue
+                problems.append(f"{name}:{lineno}: host {host!r} is not allowed: {line.strip()}")
             for m in MAIL_RE.finditer(line):
                 address = m.group(0)
                 domain = address.rsplit("@", 1)[1].lower()
                 if name in MAIL_ALLOWED_IN and domain in MAIL_ALLOWED_DOMAINS:
+                    continue
+                # An address under a reserved name is a fixture and cannot be a
+                # contact: RFC 2606 guarantees the domain is nobody's. The check
+                # this gate exists for -- an organisational address arriving where
+                # a personal one belongs -- is untouched, because an
+                # organisational address has a domain that resolves.
+                if RESERVED_NAME_RE.search(domain):
+                    reserved_mail[domain] += 1
                     continue
                 problems.append(f"{name}:{lineno}: mail address {address!r}: {line.strip()}")
             if LOCAL_PATH_RE.search(line):
@@ -192,8 +231,29 @@ def main(argv: list[str]) -> int:
 
     if args.list:
         for host, count in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0])):
-            mark = " " if host in ALLOWED_HOSTS else "!"
+            if host in ALLOWED_HOSTS:
+                mark = " "
+            elif RESERVED_NAME_RE.search(host):
+                mark = "~"
+            else:
+                mark = "!"
             print(f"{mark} {count:5d}  {host}")
+
+    # Printed whether or not --list was asked for, and whether or not the run
+    # passes. The rule is the one way a reference reaches a passing run without
+    # being named in the allowlist above, so a run that used it says so.
+    if reserved_hosts or reserved_mail:
+        parts = []
+        if reserved_hosts:
+            spelled = ", ".join(f"{n} x{c}" for n, c in sorted(reserved_hosts.items()))
+            parts.append(f"{sum(reserved_hosts.values())} host reference(s) ({spelled})")
+        if reserved_mail:
+            spelled = ", ".join(f"{n} x{c}" for n, c in sorted(reserved_mail.items()))
+            parts.append(f"{sum(reserved_mail.values())} mail address(es) ({spelled})")
+        print(
+            "host-allowlist-gate: admitted under the RFC 2606 reserved-name rule: "
+            + " and ".join(parts)
+        )
 
     if problems:
         for p in problems:
@@ -205,9 +265,13 @@ def main(argv: list[str]) -> int:
         )
         return 1
 
+    admitted = len(reserved_hosts) + len(reserved_mail)
+    how = "every one on the allowlist" if not admitted else (
+        f"{len(seen) - len(reserved_hosts)} on the allowlist and the rest reserved by RFC 2606"
+    )
     print(
         f"host-allowlist-gate: {scanned} tracked file(s), {len(seen)} distinct host(s), "
-        f"every one on the allowlist, no mail address and no local path."
+        f"{how}, no unreserved mail address and no local path."
     )
     return 0
 

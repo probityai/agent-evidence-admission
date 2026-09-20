@@ -415,9 +415,9 @@ def selftest() -> int:
             cannot("the trailer rule fired on the guard's own fixtures and rule table")
         if not trailers_in(own + f"\n\nCo-Authored-By: {assistant} <noreply@example.invalid>\n"):
             cannot("the trailer rule missed a real trailer appended to the guard's own file")
-        if not trailers_in(own + f"\n\n\U0001f916 Generated with [{assistant} Code](https://x)\n"):
+        if not trailers_in(own + f"\n\n\U0001f916 Generated with [{assistant} Code](https://example.invalid)\n"):
             cannot("the trailer rule missed an emoji-prefixed trailer in the guard's own file")
-    if not trailers_in(f"Generated with [{assistant} Code](https://x)"):
+    if not trailers_in(f"Generated with [{assistant} Code](https://example.invalid)"):
         cannot("the trailer rule did not fire on its own positive control")
     if trailers_in(f"The rule names {assistant.lower()} so that it can match it."):
         cannot("the trailer rule fired on a mention that begins no line")
