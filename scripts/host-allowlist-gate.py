@@ -132,11 +132,6 @@ SKIP = {
     ".githooks/commit-msg",
     "scripts/pre-push-identity-scan.py",
     "scripts/pre-push-identity-scan-test.py",
-    # And the style gate, for the same reason it skips itself: its selftest proves
-    # the trailer rule with example trailers, and a trailer carries an address and
-    # a link. Those are the fixtures the rule is checked against, never references
-    # this project makes.
-    "scripts/docs-style-gate.py",
 }
 
 # A citation file carries the author's address because the format requires one,
