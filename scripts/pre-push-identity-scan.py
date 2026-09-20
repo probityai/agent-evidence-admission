@@ -39,9 +39,21 @@ What is matched, and where each rule comes from:
     refuses its own commit.
   * ABSOLUTE_HOME -- an absolute home directory on either desktop OS.
   * DOSSIER -- the private research tree's numbered dossier directories.
+  * EVERY DECODED VIEW of an added line or a commit message, not only its text.
+    Signed statements are the product and a signed statement carries its payload
+    base64-encoded, so a forbidden string inside a payload used to sit in a file
+    we publish while every rule above read past it. Measured, not argued: a range
+    carrying 31 statement files whose signed payloads each held a forbidden host
+    produced 31 findings, 20 naming plain-text files and NONE naming anything
+    under `statements/`; the push was refused only because a plain-text copy
+    happened to sit in the generator beside the encoded ones. `_decoding.views`
+    decodes base64 (both alphabets, padded or not), hex and percent-encoding,
+    follows nesting, and every rule above is applied to what comes back. A
+    finding names the layers crossed and the JSON key path, so a reader learns
+    where the string sits, and not only which file held it.
   * The salted-digest sidecar `.githooks/commit-msg.forbidden-words`, loaded
     exactly as `scripts/forbidden-word-scan.py` loads it (that function is
-    copied here verbatim rather than imported, so this hook has no import path
+    copied here verbatim, never imported, so this hook has no import path
     to break when it runs from a detached worktree).
 
 Nothing matched is ever echoed. Printing it would reproduce the string into a
@@ -58,6 +70,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+# A sibling module in this directory, resolved from this file and never from
+# the caller's path, so the hook still imports it when git runs it from a
+# detached worktree. The same insert-then-import is how scripts/forcing-gate.py
+# reaches scripts/_lockfile.py. The sidecar loader below is still copied rather
+# than imported, for the reason its own comment gives.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _decoding import GUARD_MATERIAL, GUARD_SPANS, views  # noqa: E402
+
 HOOK_DIR = Path(__file__).resolve().parent.parent / ".githooks"
 SIDECAR = HOOK_DIR / "commit-msg.forbidden-words"
 ZERO_SHA = re.compile(r"^0+$")
@@ -73,15 +94,13 @@ def _hex(*words: str) -> str:
 # GitHub outbound gates match with `-`, `_` or space separators. The bare names
 # already cover the heredoc-sentinel, identifier and `.io`-domain forms those
 # gates were widened for. Held as hex for the reason given in the docstring.
-IDENTITY = re.compile(
-    _hex(
-        "67657470726f62697479",
-        "70726f62697479",
-        "6d617463686c6f636b",
-        "6d63705b2d5f205d746573745b2d5f205d746f6f6c6b6974",
-    ),
-    re.IGNORECASE,
+IDENTITY_SPANS = (
+    "67657470726f62697479",
+    "70726f62697479",
+    "6d617463686c6f636b",
+    "6d63705b2d5f205d746573745b2d5f205d746f6f6c6b6974",
 )
+IDENTITY = re.compile(_hex(*IDENTITY_SPANS), re.IGNORECASE)
 ABSOLUTE_HOME = re.compile(r"^\+.*(/home/[a-z]+/|/Users/[A-Za-z]+/)")
 DOSSIER = re.compile(r"research/[0-9]{3}-[a-z0-9-]+")
 
@@ -89,6 +108,17 @@ RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("first-party product name", IDENTITY),
     ("absolute home directory", ABSOLUTE_HOME),
     ("private dossier name", DOSSIER),
+)
+
+# The same three rules over text that carries no diff marker: a commit message,
+# and the decoded view of an added line. `ABSOLUTE_HOME` is anchored to the `+`
+# of a diff line, so it is restated here unanchored, not reused, and the
+# order matches the one the message scan has always printed in.
+HOME_ANYWHERE = re.compile(r"(/home/[a-z]+/|/Users/[A-Za-z]+/)")
+BARE_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("first-party product name", IDENTITY),
+    ("private dossier name", DOSSIER),
+    ("absolute home directory", HOME_ANYWHERE),
 )
 
 
@@ -101,10 +131,34 @@ RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
 # that ties the organisation to anything is refused exactly as before -- so the
 # reader of a public repository sees an owner and learns nothing from it. Held as
 # hex for the same reason the rules above are.
+# The organisation's GitHub Pages host is the same owner written as a hostname
+# (`<handle>.github.io/<repository>/...`), and it is where a public predicate
+# type URI lives, so it is permitted in exactly the same repository-qualified
+# shape. The two Rust crate repositories the organisation publishes are named
+# beside the three original ones for the same reason.
+OWNER_SPAN = "70726f626974796169"
 PERMITTED_PATH = re.compile(
-    _hex("70726f626974796169") + r"/agent-evidence-(?:vectors|vocabulary|admission)\b",
+    _hex(OWNER_SPAN)
+    + r"(?:\.github\.io)?/(?:agent-evidence-(?:vectors|vocabulary|admission)|jcs-admit|dsse)\b",
     re.IGNORECASE,
 )
+
+# The spans above are rule material, and decoding is what made that a problem:
+# the first run of this scan after the decoding step was added refused this
+# file's own commit, naming the line the word list is built from.
+# `_decoding.material` explains why the answer is the literals and not the
+# path, and `_decoding.GUARD_SPANS` explains why one list covers every guard
+# in place of one list each. This check is what keeps that list honest: a span
+# used here and not declared there would be refused by the sibling scan that
+# reads this file, so the mismatch stops the guard and not a push.
+UNDECLARED = (set(IDENTITY_SPANS) | {OWNER_SPAN}) - set(GUARD_SPANS)
+if UNDECLARED:
+    print(
+        f"identity-scan: {len(UNDECLARED)} rule span(s) are not declared in "
+        "_decoding.GUARD_SPANS; add them there so every guard exempts them alike",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
 
 
 def permit(line: str) -> str:
@@ -222,31 +276,58 @@ def _holds(sha: str) -> bool:
     ).returncode == 0
 
 
-def scan_range(rev_args: list[str], sidecar: Sidecar) -> tuple[int, list[str]]:
-    """Scan every commit `git log <rev_args>` reaches. Returns (commits scanned, hits)."""
-    commits = [c for c in _git("rev-list", *rev_args).split() if c]
+def _bare_hits(where: str, text: str, sidecar: Sidecar) -> list[str]:
+    """Every rule hit in one piece of text that carries no diff marker."""
     hits: list[str] = []
-    if not commits:
-        return 0, hits
+    scanned = permit(text)
+    for label, rule in BARE_RULES:
+        if rule.search(scanned):
+            hits.append(f"{where}: {label} (text withheld)")
+    for label in sidecar.labels(scanned):
+        hits.append(f"{where}: {label} (word withheld)")
+    return hits
 
-    # Commit messages first: three of this repository's own messages once
-    # carried a product name, and a message is not a diff line.
+
+def _decoded_hits(where: str, text: str, sidecar: Sidecar) -> list[str]:
+    """Every rule hit in every decoded view of `text`.
+
+    The layers crossed are printed and the matched string is not, which is the
+    same trade the rest of this file makes: a reader needs to know that the hit
+    is in the base64 `payload` of an envelope and not in its prose, and does
+    not need the string reproduced into a CI log to act on it.
+    """
+    hits: list[str] = []
+    for layers, decoded in views(text, GUARD_MATERIAL):
+        hits.extend(_bare_hits(f"{where} [{layers}]", decoded, sidecar))
+    return hits
+
+
+def _message_hits(sha: str, message: str, sidecar: Sidecar) -> list[str]:
+    """Every rule hit in one commit message, one entry per matching line and rule."""
+    hits: list[str] = []
+    for number, line in enumerate(message.splitlines(), start=1):
+        where = f"{sha[:12]} (commit message):{number}"
+        hits.extend(_bare_hits(where, line, sidecar))
+        hits.extend(_decoded_hits(where, line, sidecar))
+    return hits
+
+
+def _scan_messages(rev_args: list[str], sidecar: Sidecar) -> list[str]:
+    """Commit messages first: three of this repository's own messages once
+    carried a product name, and a message is not a diff line."""
+    hits: list[str] = []
     for record in _git("log", "--format=%H%x00%B%x01", *rev_args).split("\x01"):
         if "\x00" not in record:
             continue
         sha, _, message = record.partition("\x00")
-        sha = sha.strip()
-        for number, line in enumerate(message.splitlines(), start=1):
-            for label, rule in RULES[:1] + RULES[2:]:
-                if rule.search(permit(line)):
-                    hits.append(f"{sha[:12]} (commit message):{number}: {label} (text withheld)")
-            if re.search(r"(/home/[a-z]+/|/Users/[A-Za-z]+/)", permit(line)):
-                hits.append(f"{sha[:12]} (commit message):{number}: absolute home directory (text withheld)")
-            for label in sidecar.labels(permit(line)):
-                hits.append(f"{sha[:12]} (commit message):{number}: {label} (word withheld)")
+        hits.extend(_message_hits(sha.strip(), message, sidecar))
+    return hits
 
-    # Then every ADDED line of every commit. `-U0` keeps context lines out of
-    # the diff so a hit is always on a line the commit itself introduced.
+
+def _scan_added_lines(rev_args: list[str], sidecar: Sidecar) -> list[str]:
+    """Every ADDED line of every commit. `-U0` keeps context lines out of the
+    diff so a hit is always on a line the commit itself introduced."""
+    hits: list[str] = []
     sha = ""
     path = ""
     number = 0
@@ -275,7 +356,16 @@ def scan_range(rev_args: list[str], sidecar: Sidecar) -> tuple[int, list[str]]:
                 hits.append(f"{where}: {label} (text withheld)")
         for label in sidecar.labels(scanned[1:]):
             hits.append(f"{where}: {label} (word withheld)")
-    return len(commits), hits
+        hits.extend(_decoded_hits(where, scanned[1:], sidecar))
+    return hits
+
+
+def scan_range(rev_args: list[str], sidecar: Sidecar) -> tuple[int, list[str]]:
+    """Scan every commit `git log <rev_args>` reaches. Returns (commits scanned, hits)."""
+    commits = [c for c in _git("rev-list", *rev_args).split() if c]
+    if not commits:
+        return 0, []
+    return len(commits), _scan_messages(rev_args, sidecar) + _scan_added_lines(rev_args, sidecar)
 
 
 def ranges_from_stdin(lines: list[str]) -> list[list[str]]:
@@ -311,9 +401,9 @@ def ranges_from_stdin(lines: list[str]) -> list[list[str]]:
 
 
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--range", action="append", default=[], metavar="OLD..NEW",
-                        help="a revision range to scan instead of reading stdin")
+                        help="a revision range to scan; stdin is not read")
     parser.add_argument("--recent", type=int, metavar="N",
                         help="scan the last N commits reachable from HEAD")
     args = parser.parse_args(argv[1:])

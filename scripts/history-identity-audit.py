@@ -4,7 +4,7 @@
 The pre-push scan beside this one gates what is ABOUT to be pushed. This one
 reads what already HAS been: every commit `origin/main` reaches, first commit to
 tip, with the same rules and the same rule sidecar, so a leak that walked past
-an older guard is found by the schedule rather than by a reader. It is the
+an older guard is found by the schedule, not by a reader. It is the
 instrument that would have named the four 2026-09 commits the day they landed.
 
     scripts/history-identity-audit.py              # origin/main, end to end
@@ -27,11 +27,12 @@ import importlib.util
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 SCANNER = Path(__file__).resolve().with_name("pre-push-identity-scan.py")
 
 
-def _scanner():  # type: ignore[no-untyped-def]
+def _scanner() -> ModuleType:
     spec = importlib.util.spec_from_file_location("pre_push_identity_scan", SCANNER)
     if spec is None or spec.loader is None:
         print(f"history-identity-audit: cannot load {SCANNER}", file=sys.stderr)
@@ -42,7 +43,7 @@ def _scanner():  # type: ignore[no-untyped-def]
 
 
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--ref", default="origin/main", help="the ref to audit end to end")
     args = parser.parse_args(argv[1:])
 
