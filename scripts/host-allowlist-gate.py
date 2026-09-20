@@ -144,6 +144,50 @@ MAIL_ALLOWED_DOMAINS = frozenset({"gmail.com"})
 BINARYISH_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".gz", ".zip"}
 
 
+def listing_mark(host: str) -> str:
+    """How `host` reached a passing run: on the allowlist, by rule, or not at all."""
+    if host in ALLOWED_HOSTS:
+        return " "
+    if RESERVED_NAME_RE.search(host):
+        return "~"
+    return "!"
+
+
+def reserved_report(hosts: Counter[str], mail: Counter[str]) -> str | None:
+    """One line naming every reference the reserved-name rule admitted, or None."""
+    if not hosts and not mail:
+        return None
+    parts = []
+    for label, counter in (("host reference(s)", hosts), ("mail address(es)", mail)):
+        if counter:
+            spelled = ", ".join(f"{n} x{c}" for n, c in sorted(counter.items()))
+            parts.append(f"{sum(counter.values())} {label} ({spelled})")
+    return (
+        "host-allowlist-gate: admitted under the RFC 2606 reserved-name rule: "
+        + " and ".join(parts)
+    )
+
+
+def passing_summary(scanned: int, seen: Counter[str], reserved_hosts: Counter[str]) -> str:
+    """The line a clean run ends on, saying how each host was admitted.
+
+    It used to say every host was on the allowlist. With the rule in place that is
+    not what a pass means, and a summary overstating its own check is the defect
+    this gate exists to catch in prose.
+    """
+    if reserved_hosts:
+        how = (
+            f"{len(seen) - len(reserved_hosts)} on the allowlist and the rest "
+            "reserved by RFC 2606"
+        )
+    else:
+        how = "every one on the allowlist"
+    return (
+        f"host-allowlist-gate: {scanned} tracked file(s), {len(seen)} distinct host(s), "
+        f"{how}, no unreserved mail address and no local path."
+    )
+
+
 def cannot(msg: str) -> None:
     print(f"host-allowlist-gate: COULD NOT CHECK -- {msg}", file=sys.stderr)
     raise SystemExit(2)
@@ -226,29 +270,14 @@ def main(argv: list[str]) -> int:
 
     if args.list:
         for host, count in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0])):
-            if host in ALLOWED_HOSTS:
-                mark = " "
-            elif RESERVED_NAME_RE.search(host):
-                mark = "~"
-            else:
-                mark = "!"
-            print(f"{mark} {count:5d}  {host}")
+            print(f"{listing_mark(host)} {count:5d}  {host}")
 
     # Printed whether or not --list was asked for, and whether or not the run
     # passes. The rule is the one way a reference reaches a passing run without
     # being named in the allowlist above, so a run that used it says so.
-    if reserved_hosts or reserved_mail:
-        parts = []
-        if reserved_hosts:
-            spelled = ", ".join(f"{n} x{c}" for n, c in sorted(reserved_hosts.items()))
-            parts.append(f"{sum(reserved_hosts.values())} host reference(s) ({spelled})")
-        if reserved_mail:
-            spelled = ", ".join(f"{n} x{c}" for n, c in sorted(reserved_mail.items()))
-            parts.append(f"{sum(reserved_mail.values())} mail address(es) ({spelled})")
-        print(
-            "host-allowlist-gate: admitted under the RFC 2606 reserved-name rule: "
-            + " and ".join(parts)
-        )
+    admitted = reserved_report(reserved_hosts, reserved_mail)
+    if admitted:
+        print(admitted)
 
     if problems:
         for p in problems:
@@ -260,14 +289,7 @@ def main(argv: list[str]) -> int:
         )
         return 1
 
-    admitted = len(reserved_hosts) + len(reserved_mail)
-    how = "every one on the allowlist" if not admitted else (
-        f"{len(seen) - len(reserved_hosts)} on the allowlist and the rest reserved by RFC 2606"
-    )
-    print(
-        f"host-allowlist-gate: {scanned} tracked file(s), {len(seen)} distinct host(s), "
-        f"{how}, no unreserved mail address and no local path."
-    )
+    print(passing_summary(scanned, seen, reserved_hosts))
     return 0
 
 
