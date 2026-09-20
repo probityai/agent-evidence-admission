@@ -46,7 +46,7 @@ no extra rules.
 lines as additional rules. Suitable for anything whose pattern is not itself
 sensitive.
 
-`commit-msg.forbidden-tokens`, if present, contributes a salted hash per
+`commit-msg.forbidden-words`, if present, contributes a salted hash per
 forbidden word. It exists because a regex has to spell what it forbids, and
 one of these repositories is public and product-neutral: a rule written there
 as a literal would publish the very names it is meant to keep out, and a rule
