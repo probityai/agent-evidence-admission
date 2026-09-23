@@ -33,6 +33,14 @@ env:
   CUE_VERSION: v0.17.1
   CUE_SHA256: a39b0c97695069d95d276d99be0f5dbabb081d801bfdc9ba49b76efaf94e2369
 
+  # The CNCF Automated Governance Maturity Model that
+  # docs/AUTOMATED-GOVERNANCE-MATURITY-MODEL.md quotes, pinned by the commit of its
+  # repository the page was written against and by the SHA-256 of the file at that
+  # commit. The repository is archived, so neither should move; if either does, the
+  # page is re-read against the new text rather than the pin moved to match it.
+  MATURITY_MODEL_COMMIT: 5fb87f474808e02e7786d7c5548e65ffc1a6e29e
+  MATURITY_MODEL_SHA256: ec10156148ce93889761ef1f1718aa5a4e8afc9b403c6fc6fa38885e70461114
+
 jobs:
   hygiene:
     name: hygiene
@@ -55,6 +63,15 @@ jobs:
         run: python3 scripts/gen_profile_registry.py --check
       - name: the ratchet report agrees with its own data
         run: python3 scripts/ratchet_report.py --check
+      - name: the maturity-model gate fires on its own positive controls
+        run: python3 scripts/maturity-map-gate.py --selftest
+      - name: the maturity-model page cites files that exist and quotes the model exactly
+        run: |
+          set -euo pipefail
+          curl -sSfL -o "$RUNNER_TEMP/maturity-model.md" \
+            "https://raw.githubusercontent.com/cncf/tag-security/${MATURITY_MODEL_COMMIT}/community/resources/automated-governance-maturity-model/README.md"
+          echo "${MATURITY_MODEL_SHA256}  $RUNNER_TEMP/maturity-model.md" | sha256sum -c -
+          heavy-queue heavy-run --name maturity-map-gate --timeout 3600 -- python3 scripts/maturity-map-gate.py --model "$RUNNER_TEMP/maturity-model.md"
 
   engines:
     # The rails run on three third-party binaries. Every one is pinned by

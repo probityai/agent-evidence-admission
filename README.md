@@ -46,6 +46,7 @@ Continuous integration spends it on every push.
 | `PROFILE-REGISTRY.md`, `profiles/*/PROFILE-MAP.json` | 93 obligations, one row per rail per obligation, measured. |
 | `docs/ADVERSARIAL-RATCHET.md` | The open adversarial-mutation findings against these rails, as vector ids, families, axes, and soundness classes. |
 | `docs/CONSUMER-POLICY.md` | The eleven consumer pins, what each one decides, and what an absent value means. Nine of the eleven rules these rails enforce are facts about your deployment rather than about the statement. |
+| `docs/AUTOMATED-GOVERNANCE-MATURITY-MODEL.md` | Each item of the CNCF Automated Governance Maturity Model, quoted, with the file here that serves it or a plain statement that nothing here does. The rails are the policy enforcement points its Enforcement category describes. |
 | `PROVENANCE.md` | Per lifted file: where it came from, at which commit, and the SHA-256 of the source bytes. |
 | `.github/workflows/ci.yml` | The pins: the corpus tag and its commit, and each engine version with the digest of its release asset. |
 
@@ -172,8 +173,9 @@ what stops the declaration list becoming a place to file inconvenient results.
 
 Four jobs, on every push. `hygiene` checks that no tracked file names a host outside a
 short allowlist, that no prose in the tree or anywhere in the history carries an
-authorship mark or a form the style guide rules out, and that the two rendered documents
-match the data they render from.
+authorship mark or a form the style guide rules out, that the two rendered documents
+match the data they render from, and that the maturity-model page cites only files that
+exist and quotes the model exactly.
 `corpus` clones the vectors at the pinned tag, refuses a tag that has moved off its
 pinned commit, and re-derives the projection. `oracle` runs the module's 193 tests and
 refuses a deployed manifest whose embedded copy has drifted from the module. `rails`
