@@ -71,7 +71,7 @@ jobs:
           curl -sSfL -o "$RUNNER_TEMP/maturity-model.md" \
             "https://raw.githubusercontent.com/cncf/tag-security/${MATURITY_MODEL_COMMIT}/community/resources/automated-governance-maturity-model/README.md"
           echo "${MATURITY_MODEL_SHA256}  $RUNNER_TEMP/maturity-model.md" | sha256sum -c -
-          heavy-queue heavy-run --name maturity-map-gate --timeout 3600 -- python3 scripts/maturity-map-gate.py --model "$RUNNER_TEMP/maturity-model.md"
+          python3 scripts/maturity-map-gate.py --model "$RUNNER_TEMP/maturity-model.md"
 
   engines:
     # The rails run on three third-party binaries. Every one is pinned by
