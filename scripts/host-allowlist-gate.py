@@ -132,6 +132,12 @@ SKIP = {
     ".githooks/commit-msg",
     "scripts/pre-push-identity-scan.py",
     "scripts/pre-push-identity-scan-test.py",
+    # The decoder the identity scan imports to read encoded payloads. Its
+    # percent-encoding pattern is a character class that spells the two
+    # characters of a home-relative path, so the path rule fires on the
+    # instrument. It is a shared file kept identical to its source copy, so the
+    # exemption lives here rather than as an edit that forks it.
+    "scripts/_decoding.py",
 }
 
 # A citation file carries the author's address because the format requires one,
