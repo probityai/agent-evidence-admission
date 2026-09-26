@@ -72,6 +72,14 @@ jobs:
             "https://raw.githubusercontent.com/cncf/tag-security/${MATURITY_MODEL_COMMIT}/community/resources/automated-governance-maturity-model/README.md"
           echo "${MATURITY_MODEL_SHA256}  $RUNNER_TEMP/maturity-model.md" | sha256sum -c -
           python3 scripts/maturity-map-gate.py --model "$RUNNER_TEMP/maturity-model.md"
+      # This repository already carried the salted rule file the message gate
+      # reads, and carried nothing that applied those rules to its tracked
+      # CONTENT. So a word the hook refuses in a commit message could sit in a
+      # committed file and no run said so. The scanner is the same file the two
+      # sibling repositories run, and it reads the same sidecar, so one rule
+      # file now governs both surfaces here as it does there.
+      - name: no tracked file carries a word the rule file forbids
+        run: python3 scripts/forbidden-word-scan.py
 
   engines:
     # The rails run on three third-party binaries. Every one is pinned by
