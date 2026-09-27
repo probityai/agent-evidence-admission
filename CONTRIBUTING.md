@@ -12,8 +12,8 @@ rules, so a clone that skips it finds out on the pull request instead.
 
 The rails are measured, not asserted. A change to a policy under `rego/`,
 `kyverno/` or `policy-controller/` needs the conformance harness to agree with
-it; [Running the conformance harness](README.md#running-the-conformance-harness)
-says how, and [Continuous integration](README.md#continuous-integration) lists
+it; [Running the conformance harness](docs/DESIGN.md#running-the-conformance-harness)
+says how, and [Continuous integration](docs/DESIGN.md#continuous-integration) lists
 what CI refuses.
 
 ## License

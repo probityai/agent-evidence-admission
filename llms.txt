@@ -13,12 +13,13 @@ under review at in-toto/attestation#570. The corpus the rails are measured
 against is probityai/agent-evidence-vectors at the tag `v0.10.1`, pinned by tag
 and by commit in `.github/workflows/ci.yml`. These rails evaluate an already
 verified statement; the envelope signature is checked by the engine's own key
-authority before any policy body runs, and the README states that ceiling in
-full before anything else.
+authority before any policy body runs. The README says so in its status, and
+docs/DESIGN.md states that ceiling in full.
 
 ## Entry points
 
-- [README](https://github.com/probityai/agent-evidence-admission/blob/main/README.md): The four-command verification of the claim, the file map, the trust ceiling, and how the profile registry is derived.
+- [README](https://github.com/probityai/agent-evidence-admission/blob/main/README.md): What the policies are, a pinned quick start with OPA, and the status.
+- [Design, trust ceiling and evidence](https://github.com/probityai/agent-evidence-admission/blob/main/docs/DESIGN.md): The four-command verification of the claim, the file map, the trust ceiling, and how the profile registry is derived.
 - [The oracle, rego/execution_evidence.rego](https://github.com/probityai/agent-evidence-admission/blob/main/rego/execution_evidence.rego): The Rego v1 module every other rail is compared against; its header states what it does not verify.
 - [Profile registry](https://github.com/probityai/agent-evidence-admission/blob/main/PROFILE-REGISTRY.md): One row per rail per obligation, rendered from `profiles/*/PROFILE-MAP.json`.
 - [Consumer policy](https://github.com/probityai/agent-evidence-admission/blob/main/docs/CONSUMER-POLICY.md): The consumer pins, what each decides, and what an absent value means.
