@@ -80,6 +80,10 @@ jobs:
       # file now governs both surfaces here as it does there.
       - name: no tracked file carries a word the rule file forbids
         run: python3 scripts/forbidden-word-scan.py
+      - name: the README stays one screen and every link in it resolves
+        run: |
+          python3 scripts/readme-lint.py README.md
+          python3 scripts/readme-lint-test.py
 
   engines:
     # The rails run on three third-party binaries. Every one is pinned by
