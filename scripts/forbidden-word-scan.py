@@ -113,11 +113,12 @@ def tracked_files() -> list[Path]:
 
 
 # The organisation that owns this repository is named in its own URLs, and a URL
-# cannot avoid naming its owner. The permit is a PATH permit and not a word
-# permit: the handle passes only where a slash and one of this family's three
-# repository names follow it. Everything else stays refused, including the handle
-# alone. Copied verbatim from scripts/pre-push-identity-scan.py, not imported, for
-# the reason that file gives: these guards must run with no import path to break.
+# cannot avoid naming its owner. The permit blanks an owner-qualified path of this
+# family. The salted words no longer include the organisation's name, so the
+# permit is not what lets a name through today, and the website beside a path is
+# still refused. Copied verbatim from scripts/pre-push-identity-scan.py, not
+# imported, for the reason that file gives: these guards must run with no import
+# path to break.
 OWNER_SPAN = "70726f626974796169"
 PERMITTED_PATH = re.compile(
     bytes.fromhex(OWNER_SPAN).decode("ascii")
