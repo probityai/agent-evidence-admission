@@ -157,6 +157,60 @@ class HostBoundaryControls(unittest.TestCase):
             consumer.unpack(archive, target)
         self.assertEqual((target / "safe/file.json").read_bytes(), b"native")
 
+    def installation(self):
+        output = self.root / "installation"
+        site = output / "env/lib/python3.12/site-packages"
+        package = site / consumer.PACKAGE
+        package.mkdir(parents=True)
+        source = package / "cli.py"
+        source.write_bytes(b"raise SystemExit('selected reader fixture')\n")
+        self.selected["sourceContract"]["files"] = {
+            consumer.PACKAGE + "/cli.py": {"sha256": consumer.sha(source.read_bytes())}}
+        consumer.save(output / "installation.json", {
+            "selectionSha256": consumer.sha(consumer.SELECTION.read_bytes()),
+            "build": {"sourceContractSha256": self.selected["sourceContract"]["sha256"]}})
+        return output, site
+
+    def test_installation_refuses_startup_hooks_and_model_runtimes(self):
+        output, site = self.installation()
+        self.assertEqual(consumer.verify_installation(output), site)
+        marker = self.root / "startup-executed"
+        for name in ("candidate.pth", "sitecustomize.py", "usercustomize.py",
+                     "llama_cpp", "torch", "transformers"):
+            with self.subTest(name=name):
+                candidate = site / name
+                candidate.write_text("import pathlib; pathlib.Path(" + repr(str(marker)) + ").touch()\n")
+                with self.assertRaises(ValueError):
+                    consumer.verify_installation(output)
+                self.assertFalse(marker.exists())
+                candidate.unlink()
+        self.assertEqual(consumer.verify_installation(output), site)
+
+    def test_installation_receipt_drift_is_refused(self):
+        output, _site = self.installation()
+        receipt_path = output / "installation.json"
+        receipt = consumer.json.loads(receipt_path.read_bytes())
+        for field in ("selection", "contract"):
+            changed = copy.deepcopy(receipt)
+            if field == "selection":
+                changed["selectionSha256"] = "0" * 64
+            else:
+                changed["build"]["sourceContractSha256"] = "0" * 64
+            consumer.save(receipt_path, changed)
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                consumer.verify_installation(output)
+
+    def test_a_weaker_host_quality_selection_is_refused(self):
+        self.select.stop()
+        for field in ("minimumCorrectPerRow", "minimumFullyCorrectPairsPerRow", "rows"):
+            changed = copy.deepcopy(self.selected)
+            changed["qualityPolicy"][field] -= 1
+            chosen = self.root / "host-selection.json"
+            consumer.save(chosen, changed)
+            with patch.object(consumer, "SELECTION", chosen):
+                with self.subTest(field=field), self.assertRaises(ValueError):
+                    consumer.selection()
+
 
 if __name__ == "__main__":
     unittest.main()
