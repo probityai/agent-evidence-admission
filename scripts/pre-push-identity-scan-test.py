@@ -383,6 +383,105 @@ def history_status(contents: str) -> int:
     return done.returncode
 
 
+def _fixture_git(repo: Path, env: dict[str, str], *arguments: str) -> str:
+    """Run Git only inside the bounded, owned hook fixture."""
+    return subprocess.run(["git", *arguments], cwd=repo, env=env, check=True,
+                          capture_output=True, text=True, timeout=10).stdout.strip()
+
+
+def _push_hook_fixture(root: Path, env: dict[str, str]) -> tuple[Path, Path]:
+    """Create a tiny real linked worktree with a different common-clone guard."""
+    repo = root / "common clone"
+    repo.mkdir()
+    _fixture_git(repo, env, "init", "-q", "--template=")
+    _fixture_git(repo, env, "config", "user.email", "hook-test@invalid")
+    _fixture_git(repo, env, "config", "user.name", "Hook Test")
+    _fixture_git(repo, env, "config", "commit.gpgsign", "false")
+    (repo / "scripts").mkdir()
+    (repo / ".githooks").mkdir()
+    for name in ("pre-push-identity-scan.py", "_decoding.py"):
+        (repo / "scripts" / name).write_bytes((HERE / name).read_bytes())
+    (repo / ".githooks/commit-msg.forbidden-words").write_bytes(scan.SIDECAR.read_bytes())
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _fixture_git(repo, env, "add", "-A")
+    _fixture_git(repo, env, "commit", "-q", "-m", "add the selected guard fixture")
+    worktree = root / "active worktree"
+    _fixture_git(repo, env, "worktree", "add", "-q", "--detach", str(worktree), "HEAD")
+    # Only the common checkout gets the obsolete additional bare-name rule.
+    # The active worktree retains the unmodified production scanner and sidecar.
+    original = SCANNER.read_text(encoding="utf-8")
+    obsolete = ("obsolete_rule = ('obsolete bare-name rule', re.compile(" + repr(COMPANY) + ", re.I))\n"
+                "RULES = (*RULES, obsolete_rule)\nBARE_RULES = (*BARE_RULES, obsolete_rule)\n")
+    (repo / "scripts/pre-push-identity-scan.py").write_text(
+        original.replace('if __name__ == "__main__":', obsolete + 'if __name__ == "__main__":'),
+        encoding="utf-8")
+    return repo, worktree
+
+
+def _push_fixture_payload(worktree: Path, env: dict[str, str], text: str) -> str:
+    old = _fixture_git(worktree, env, "rev-parse", "HEAD")
+    (worktree / "fixture.txt").write_text(text + "\n", encoding="utf-8")
+    _fixture_git(worktree, env, "add", "fixture.txt")
+    _fixture_git(worktree, env, "commit", "-q", "-m", "add one hook input")
+    new = _fixture_git(worktree, env, "rev-parse", "HEAD")
+    return f"refs/heads/probe {new} refs/heads/probe {old}\n"
+
+
+def _invoke_push_hook(worktree: Path, env: dict[str, str], payload: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["bash", str(HERE.parent / ".githooks/pre-push")],
+                          cwd=worktree, env=env, input=payload, capture_output=True,
+                          text=True, timeout=10, check=False)
+
+
+def _pre_push_hook_cases() -> tuple[int, list[str]]:
+    """Exercise actual hook routing and fail-closed behavior with real Git refs."""
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull)
+    failures: list[str] = []
+    ran = 0
+    with tempfile.TemporaryDirectory(prefix="push-hook-fixture-") as raw:
+        repo, worktree = _push_hook_fixture(Path(raw), env)
+        for label, contents, expected in (
+                ("public namespace", "probity_policy_vocabulary_reader", 0),
+                ("website", SITE, 1), ("private product", OTHER, 1)):
+            payload = _push_fixture_payload(worktree, env, contents)
+            done = _invoke_push_hook(worktree, env, payload)
+            ran += 1
+            if done.returncode != expected:
+                failures.append(f"linked worktree {label}: exit {done.returncode}, expected {expected}")
+            if expected == 0:
+                obsolete = subprocess.run([sys.executable, str(repo / "scripts/pre-push-identity-scan.py")],
+                                          cwd=worktree, env=env, input=payload, capture_output=True,
+                                          text=True, timeout=10, check=False)
+                ran += 1
+                if obsolete.returncode != 1:
+                    failures.append("common-clone obsolete scanner refusal control was inert")
+        for label, payload, message in (
+                ("empty input", "", "nothing arrived on stdin"),
+                ("malformed input", "not a ref update\n", "history scan could not run")):
+            done = _invoke_push_hook(worktree, env, payload)
+            ran += 1
+            if done.returncode != 1 or message not in done.stderr:
+                failures.append(f"linked worktree {label} did not fail closed")
+        active = worktree / "scripts/pre-push-identity-scan.py"
+        active.unlink()
+        done = _invoke_push_hook(worktree, env, payload)
+        ran += 1
+        if done.returncode != 1 or "guard is not present" not in done.stderr:
+            failures.append("missing active guard fell back to the common checkout")
+        active.write_text("raise SystemExit(2)\n", encoding="utf-8")
+        done = _invoke_push_hook(worktree, env, payload)
+        ran += 1
+        if done.returncode != 1 or "history scan could not run" not in done.stderr:
+            failures.append("active scanner failure did not abort the push")
+        done = _invoke_push_hook(Path(raw), env, payload)
+        ran += 1
+        if done.returncode != 1 or "active checkout could not be resolved" not in done.stderr:
+            failures.append("unresolved active checkout did not abort the push")
+    print(f"{ran - len(failures)}/{ran} real pre-push hook controls held")
+    return ran, failures
+
+
 ENCODED_REFUSED = (
     ("plain text, the case that already worked", _statement(FORBIDDEN_URI)),
     ("base64, standard alphabet, padded", _envelope(_statement(FORBIDDEN_URI))),
@@ -700,6 +799,9 @@ def main() -> int:
         more, bad = cases()
         total += more
         failures += bad
+    more, bad = _pre_push_hook_cases()
+    total += more
+    failures += bad
     if HOOK.exists():
         control = _hook_control()
         failures += control

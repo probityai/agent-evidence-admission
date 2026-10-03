@@ -58,6 +58,9 @@ HERE = Path(__file__).resolve().parent.parent
 #   python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())' '<the run>'
 #
 # and never commit the run itself, here or in a message.
+# The organization word is permitted, as the identity scanner specifies. The
+# website's two-word host tail has its own digest; retaining the bare-word
+# digest refused published package namespaces while adding no website coverage.
 MARK_DIGESTS = frozenset(
     {
         "c857d09db23e6822e3600bc06ad8d58f92ed62bc8efd81c753f77048662cb97d",
@@ -68,7 +71,7 @@ MARK_DIGESTS = frozenset(
         "9760d607e65eafcf2cef66bf6b6d00e2c2707e9d4bebe4ab2752bfd16233adb6",
         "9f4716542f75ea730e012a9a471f34b7047bab632b24751be278c246e4d5abc6",
         "5417dcf3515cce99d317b6d1e22915f647f195e0f1cd9578534cf18a6d353895",
-        "96530b75a4204acc15a4399e41b761d35f7d0b2a0052c26a9bb631ba7ab533ef",
+        "f5c3c0638bf9a898efbe475765356f977ae9f65bbe859317c136260ab674b55d",
         "fdc58962560c17c901b0a98b7a2fe84ad9a579ae713c239aa0613f32e81b2459",
         "ff46cb3423072dda756e1f5f85b61468775c572a60442eee89230d3b403cee73",
         "a885bd3d15a135670ccdfc0bb9921eb29c53e73a366008f9f047bd5c871b56cf",
@@ -387,6 +390,22 @@ def selftest() -> int:
         cannot("the mark table did not fire on its own positive control")
     if marks_in("reviewed by a person before landing"):
         cannot("the mark table fired on text carrying no mark")
+    # The published organization and package names are not authorship marks.
+    # Match the identity scanner's website rule instead of refusing its bare
+    # organization word inside a source contract or an installed namespace.
+    for published in ("Probity", "probityai/agent-evidence-observer",
+                      "probity_policy_vocabulary_reader", "probity_policy_vocabulary_reader/cli.py"):
+        if marks_in(published):
+            cannot("the mark table refused a published organization or package name")
+    # Both website spellings and both private products stay refused. The
+    # negative fixtures use fragments so the guard does not publish its subject.
+    for fragments in (("676574", "70726f", "62697479", "2e646576"),
+                      ("70726f62697479", "2e646576"),
+                      ("6d61746368", "6c6f636b"),
+                      ("6d63702d74657374", "2d746f6f6c6b6974")):
+        private = bytes.fromhex("".join(fragments)).decode("ascii")
+        if not marks_in(private):
+            cannot("the mark table missed a website or private product control")
     if not style_findings("x.md", "You can simply run the gate."):
         cannot("the word table did not fire on its own positive control")
     if not style_findings("x.md", "Pin the anchors in order to admit a run."):
