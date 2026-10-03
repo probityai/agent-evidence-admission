@@ -8,15 +8,42 @@ the selected installed sources into a fresh private directory before replay.
 Python runs that copy with `-I -S -B`. Candidate bytecode, import hooks and packet
 helpers cannot select the reader code.
 
-The following functions keep a complete boundary visible in one place. Their
-branch counts come from `radon cc` on the consumer source. These are explicit
+The first implementation combined installation receipts, site selection and
+namespace checks in one function with complexity 22. Those inputs have distinct
+trust boundaries. `installation_site` now binds the receipt and selects the
+private Python site. `verify_package_sources` closes that site's reader
+namespace. `verify_installation` coordinates those checks.
+
+The private library and site each have a declared limit of 128 entries. The
+installation receipt has a declared limit of 65,536 bytes. Its reader and every
+source or archive reader open without following the final symlink and without
+blocking on a pipe, then check the opened descriptor's regular file type before
+the bounded read. The selected reader has
+one flat namespace with its exact selected file population. Streaming directory
+enumeration stops at the first excess entry. It never descends into an unexpected
+directory. Each source read has a declared limit of 1,048,576 bytes, including the
+second read before the isolated source copy. These limits bound work on a poisoned
+installation before import. A reviewed future selection that needs larger source
+files must review the host limit with its consumer code.
+
+Archive validation now produces a complete extraction plan before any file write.
+`validate_archive_population` binds unique member names and total expanded size
+to the host selection. `archive_member_path` checks one member's canonical path
+and accepts only regular or unspecified ZIP file types. `archive_extraction_plan`
+refuses file and ancestor collisions in either order. This prevents a late
+unsafe member from leaving an earlier file extracted. `repeat_selected_reader`
+owns the two reader results, their logs and the repeated decision contract.
+`copy_selected_sources` owns the source copy before the private import directory
+enters the reader's search path. These functions separate actual trust inputs and
+resource lifetimes; they do not add alternate names for an existing API.
+
+Three functions still keep a complete boundary visible in one place. Their branch
+counts come from `radon cc` on the final consumer source. These are explicit
 exceptions to the default limit of ten; the limit remains in force elsewhere.
 
 | Function | Complexity | Reason to keep these checks together |
 | --- | --- | --- |
-| `consumer.verify_installation` | 22 | Bounded directory traversal checks the receipt, namespace population, entry types, startup hooks, runtime absence and every selected source digest before any reader import. Splitting individual predicates into wrappers would hide the complete source boundary. |
-| `consumer.unpack` | 16 | Archive traversal checks the exact population and each path and file type against the authenticated buffer. These branches describe distinct unsafe archive shapes. Extraction remains inside the same authenticated buffer's lifetime. |
-| `consumer.replay` | 13 | Coordination copies and checks the selected source, executes two isolated readers, compares their decisions and exit statuses, and records separate publication, quality and effect decisions. Each branch closes a specific refusal or repeat condition. |
+| `consumer.verify_package_sources` | 12 | Namespace traversal checks the package directory, exact population, entry types, source ancestry and every selected source digest before any reader import. The independent predicates describe distinct unselected source shapes. A further split would fragment the same closed namespace check. |
 | `consumer.download` | 11 | Network coordination enforces HTTPS, exclusive output creation, declared length, a hard deadline and archive authentication. The cleanup and alarm restoration stay adjacent to their resource acquisition. |
 | `verify_native.verify` | 12 | The check coordinates two fresh installations, the original native replay, concrete hostile mutations, a bytecode positive control, replacement recovery and distinct CLI exits. It retains the receipt for each tested boundary. |
 

@@ -43,6 +43,8 @@ Copy this reviewed consumer directory and its checked-in selection into the rece
 
 The packet's convenience pins do not change the host's selection. The authenticated archive is held in one bounded buffer before extraction. Paths, member population and regular files are checked. Reader execution uses a fresh private copy of selected installed sources. Candidate helpers, cached bytecode and Python startup files cannot choose the reader code. The source hashes do not authenticate the host's Python binary or operating system.
 
+The private library and Python site each contain at most 128 entries. The installation receipt is at most 65,536 bytes. The reader namespace contains exactly the selected flat files. Each installed source is at most 1,048,576 bytes. The host checks the opened input's regular file type and bounds its read. It refuses excess entries, nested directories, pipes and larger inputs before import. Review these host limits with any future consumer selection.
+
 This repository's job runs on relevant changes, manual dispatch and a weekly schedule. A green check confirms the selected report's publication scope and expected quality refusal. It does not authorize model quality or an effect. This is a first-party consumer placement; outside adoption and independent custody remain separate.
 
 ## Replace or upgrade a selection
