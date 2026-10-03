@@ -2,6 +2,7 @@
 import copy
 import importlib.util
 import io
+import os
 from pathlib import Path
 import signal
 import stat
@@ -111,7 +112,9 @@ class HostBoundaryControls(unittest.TestCase):
     def test_owner_selected_archive_still_refuses_unsafe_members(self):
         for entry in (("../escape", stat.S_IFREG), ("/escape", stat.S_IFREG),
                       ("safe/../escape", stat.S_IFREG), ("safe\\escape", stat.S_IFREG),
-                      ("link", stat.S_IFLNK), ("pipe", stat.S_IFIFO), ("directory/", stat.S_IFDIR)):
+                      ("link", stat.S_IFLNK), ("pipe", stat.S_IFIFO), ("directory/", stat.S_IFDIR),
+                      ("socket", stat.S_IFSOCK), ("character-device", stat.S_IFCHR),
+                      ("block-device", stat.S_IFBLK)):
             with self.subTest(entry=entry):
                 archive = self.archive([entry])
                 target = self.root / "target"
@@ -121,13 +124,37 @@ class HostBoundaryControls(unittest.TestCase):
                 self.assertEqual(list(target.iterdir()), [])
 
     def test_duplicate_members_and_wrong_population_are_refused(self):
-        archive = self.archive([("same", stat.S_IFREG), ("same", stat.S_IFREG)])
+        with self.assertWarnsRegex(UserWarning, "Duplicate name: 'same'"):
+            archive = self.archive([("same", stat.S_IFREG), ("same", stat.S_IFREG)])
         with self.assertRaises(ValueError):
             consumer.unpack(archive, self.root / "target")
         archive = self.archive([("safe", stat.S_IFREG)])
         self.selected["archive"]["expandedBytes"] += 1
         with self.assertRaises(ValueError):
             consumer.unpack(archive, self.root / "target")
+
+    def test_a_later_unsafe_member_cannot_leave_partial_extraction(self):
+        archive = self.archive([("safe/first.json", stat.S_IFREG), ("../escape", stat.S_IFREG)])
+        target = self.root / "target"
+        with self.assertRaises(ValueError):
+            consumer.unpack(archive, target)
+        self.assertFalse(target.exists())
+
+    def test_noncanonical_and_empty_member_paths_are_refused_before_any_write(self):
+        for name in ("./a", "a//b", "a/./b", "."):
+            archive = self.archive([("safe/first.json", stat.S_IFREG), (name, stat.S_IFREG)])
+            target = self.root / "target"
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "unsafe or nonregular"):
+                consumer.unpack(archive, target)
+            self.assertFalse(target.exists())
+
+    def test_file_and_ancestor_collisions_are_refused_before_any_write(self):
+        for names in (("a", "a/b"), ("a/b", "a")):
+            archive = self.archive([(name, stat.S_IFREG) for name in names])
+            target = self.root / "target"
+            with self.subTest(names=names), self.assertRaisesRegex(ValueError, "ancestor member collision"):
+                consumer.unpack(archive, target)
+            self.assertFalse(target.exists())
 
     def test_archive_selection_bounds_and_nonregular_files_are_refused(self):
         archive = self.archive([("safe", stat.S_IFREG)])
@@ -140,10 +167,12 @@ class HostBoundaryControls(unittest.TestCase):
             consumer.authenticate_archive(link)
 
     def test_safe_selected_archive_is_extracted(self):
-        archive = self.archive([("safe/file.json", stat.S_IFREG)])
-        target = self.root / "target"
-        consumer.unpack(archive, target)
-        self.assertEqual((target / "safe/file.json").read_bytes(), b"native")
+        for mode in (0, stat.S_IFREG):
+            archive = self.archive([("safe/file.json", mode)])
+            target = self.root / ("target-" + str(mode))
+            with self.subTest(mode=mode):
+                consumer.unpack(archive, target)
+                self.assertEqual((target / "safe/file.json").read_bytes(), b"native")
 
     def test_path_replacement_after_authentication_cannot_change_extracted_bytes(self):
         archive = self.archive([("safe/file.json", stat.S_IFREG)])
@@ -210,6 +239,81 @@ class HostBoundaryControls(unittest.TestCase):
             with patch.object(consumer, "SELECTION", chosen):
                 with self.subTest(field=field), self.assertRaises(ValueError):
                     consumer.selection()
+
+    def test_installation_site_population_has_a_declared_bound(self):
+        output, site = self.installation()
+        for number in range(consumer.MAX_SITE_ENTRIES):
+            (site / ("unselected-" + str(number))).mkdir()
+        with self.assertRaisesRegex(ValueError, "host entry limit"):
+            consumer.verify_installation(output)
+
+    def test_a_nested_namespace_is_refused_without_recursive_traversal(self):
+        output, site = self.installation()
+        source = site / consumer.PACKAGE / "cli.py"
+        source.unlink()
+        source.mkdir()
+        with patch.object(Path, "rglob", side_effect=AssertionError("recursive traversal is forbidden")):
+            with self.assertRaisesRegex(ValueError, "nonregular entry"):
+                consumer.verify_installation(output)
+
+    def test_installed_source_read_obeys_the_declared_byte_bound(self):
+        output, site = self.installation()
+        source = site / consumer.PACKAGE / "cli.py"
+        with source.open("wb") as stream:
+            stream.seek(consumer.MAX_READER_SOURCE_BYTES)
+            stream.write(b"x")
+        with self.assertRaisesRegex(ValueError, "host byte limit"):
+            consumer.verify_installation(output)
+
+    def test_installation_library_scan_has_a_declared_bound(self):
+        output, _site = self.installation()
+        for number in range(consumer.MAX_SITE_ENTRIES):
+            (output / "env/lib" / ("python-extra-" + str(number))).mkdir()
+        with self.assertRaisesRegex(ValueError, "library exceeds declared host entry limit"):
+            consumer.verify_installation(output)
+
+    def test_installation_receipt_read_has_a_declared_bound(self):
+        output, _site = self.installation()
+        (output / "installation.json").write_bytes(b" " * (consumer.MAX_INSTALLATION_RECEIPT_BYTES + 1))
+        with self.assertRaisesRegex(ValueError, "host byte limit"):
+            consumer.verify_installation(output)
+
+    def test_fifo_inputs_are_refused_without_a_writer(self):
+        fifo = self.root / "candidate-fifo"
+        os.mkfifo(fifo)
+        started = time.monotonic()
+        with self.assertRaisesRegex(ValueError, "regular file"):
+            consumer.selected_source_bytes(fifo, consumer.sha(b""))
+        with self.assertRaisesRegex(ValueError, "regular file"):
+            consumer.authenticate_archive(fifo)
+        self.assertLess(time.monotonic() - started, 0.5)
+
+    def test_a_regular_archive_swapped_to_fifo_at_open_is_refused(self):
+        archive = self.archive([("safe/file.json", stat.S_IFREG)])
+        original_open = os.open
+        def replace_at_open(path, flags):
+            Path(path).unlink()
+            os.mkfifo(path)
+            return original_open(path, flags)
+        started = time.monotonic()
+        with patch.object(consumer.os, "open", side_effect=replace_at_open):
+            with self.assertRaisesRegex(ValueError, "regular file"):
+                consumer.authenticate_archive(archive)
+        self.assertLess(time.monotonic() - started, 0.5)
+
+    def test_source_copy_refuses_a_fifo_swapped_after_namespace_validation(self):
+        output, site = self.installation()
+        consumer.verify_installation(output)
+        source = site / consumer.PACKAGE / "cli.py"
+        source.unlink()
+        os.mkfifo(source)
+        stage = self.root / "source-copy"
+        stage.mkdir()
+        started = time.monotonic()
+        with self.assertRaisesRegex(ValueError, "regular file"):
+            consumer.copy_selected_sources(site, stage, self.selected)
+        self.assertEqual(list(stage.iterdir()), [])
+        self.assertLess(time.monotonic() - started, 0.5)
 
 
 if __name__ == "__main__":
