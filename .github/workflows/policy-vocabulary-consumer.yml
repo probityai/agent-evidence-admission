@@ -1,0 +1,68 @@
+name: Host-selected vocabulary publication gate
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'consumers/policy-vocabulary/**'
+      - '.github/workflows/policy-vocabulary-consumer.yml'
+  pull_request:
+    paths:
+      - 'consumers/policy-vocabulary/**'
+      - '.github/workflows/policy-vocabulary-consumer.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * 0'
+permissions:
+  contents: read
+jobs:
+  installed-host-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Install only the hash-selected host build tools
+        run: |
+          python -I -m pip install --only-binary=:all: --require-hashes -r consumers/policy-vocabulary/build-tools.lock
+      - name: Obtain the selected source with full prerequisite history
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/probityai/agent-evidence-observer.git observer-selected
+          git -C observer-selected checkout --detach 62f5d0c6fbd785259db2d5c8076dd844b53a0593
+      - name: Authenticate the durable original packet
+        run: python -I -B consumers/policy-vocabulary/consumer.py download original-native.zip
+      - name: Check the host's archive and network refusal boundaries
+        run: python -I -B consumers/policy-vocabulary/test_consumer.py
+      - name: Repeat the original, replace the installation and check concrete refusals
+        run: |
+          timeout --signal=TERM --kill-after=5s 240s python -I -B consumers/policy-vocabulary/verify_native.py \
+            --observer-checkout observer-selected --archive original-native.zip --output host-results > host-verification.json
+      - name: Apply the receiving project's report publication gate
+        run: |
+          python -I -B consumers/policy-vocabulary/consumer.py evaluate \
+            host-results/replacement original-native.zip publication-gate --purpose publication > publication-decision.json
+      - name: Retain the host decisions, source selections and installed wheels
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: vocabulary-host-decisions-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            host-verification.json
+            publication-decision.json
+            publication-gate/*.json
+            publication-gate/*.stderr
+            host-results/verification.json
+            host-results/**/decision.json
+            host-results/**/reader-*.json
+            host-results/**/reader-*.stderr
+            host-results/**/installation.json
+            host-results/**/installation.log
+            host-results/**/source-contract.json
+            host-results/**/build-record.json
+            host-results/**/*.whl
