@@ -12,8 +12,12 @@
 
 set -uo pipefail
 
-git_common="$(git rev-parse --path-format=absolute --git-common-dir)"
-src_root="$(cd "$(dirname "$git_common")" && pwd -P)"
+# A linked worktree has its own selected guard and rule sidecar. The common
+# Git directory can belong to a different revision of the main checkout.
+if ! src_root="$(git rev-parse --show-toplevel)"; then
+	echo "pre-push: ABORT -- the active checkout could not be resolved; nothing was verified." >&2
+	exit 1
+fi
 scan="$src_root/scripts/pre-push-identity-scan.py"
 
 if [ ! -f "$scan" ]; then
