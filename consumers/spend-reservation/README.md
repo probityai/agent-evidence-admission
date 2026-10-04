@@ -31,8 +31,13 @@ and pinned Observer, checks their source bytes before import, and retains the
 original outputs. Twenty controls include two actual processes racing for one
 budget. Seven local scenarios bind reserve, dispatch, settle and refund records
 to Observer checkpoints and signed file effects. A checkpoint precedes each
-protected write. Policy, prices and trace remain separate pinned inputs for
-consumer replay.
+protected write. Policy, prices and trace remain separate pinned inputs. The actual installed
+[Verify adapter](https://github.com/probityai/probity-verify/tree/03e77cfa88905bdb2a95ee355b0d90b1aacc1808)
+replays all seven captured journals twice. Seven repinned mutations check
+unaffordable reservations, changed calls and prices, reordered events, missing
+refunds and missing consumer pins. A correct refusal supports the budget record;
+it gives the refused call no permission. Missing receipts keep their full cost
+held, while execution outcomes remain unestablished by this budget reader.
 
 The motivating [S005 study](https://github.com/piiiico/agent-errata/blob/e9a247004c84aa505e8df0dbfc5fbbdae5924298/studies/S005.md)
 used a local stand-in API and synthetic costs. Our corresponding vector reserves
