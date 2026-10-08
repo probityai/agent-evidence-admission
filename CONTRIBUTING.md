@@ -16,6 +16,10 @@ it; [Running the conformance harness](docs/DESIGN.md#running-the-conformance-har
 says how, and [Continuous integration](docs/DESIGN.md#continuous-integration) lists
 what CI refuses.
 
+## Documentation
+
+Start a human guide with one practical question and a worked result. Put source pin inventories and contract tables after that example or in one linked reference. Preserve the original text, commands and heading anchors when you move details. Link the exact technical contract instead of copying it.
+
 ## License
 
 Contributions are accepted under the repository's license,
