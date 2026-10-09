@@ -20,6 +20,18 @@ what CI refuses.
 
 Start a human guide with one practical question and a worked result. Put source pin inventories and contract tables after that example or in one linked reference. Preserve the original text, commands and heading anchors when you move details. Link the exact technical contract instead of copying it.
 
+## Convergence and review
+
+A proposal that asks more than one party to agree names a date by which it
+should converge. If it has not converged by then, whoever opened it posts the
+options that emerged and asks a narrower yes-or-no question. A reply that never
+came is recorded as no reply, never as consent.
+
+A pull request that has waited a week with no reviewer goes on the next
+maintainer review as a standing line, with one question: who reviews it, by
+when. The line stays until a reviewer is named or the pull request is closed
+with a reason.
+
 ## License
 
 Contributions are accepted under the repository's license,
