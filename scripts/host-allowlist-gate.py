@@ -61,6 +61,8 @@ ALLOWED_HOSTS = frozenset(
         "www.sigstore.dev",
         "cuelang.org",
         "cue-lang.org",
+        # the CycloneDX schema namespace the digest check parses BOMs under
+        "cyclonedx.org",
         # kubernetes api groups and schema hosts that appear in manifests
         "kubernetes.io",
         "apps.kubernetes.io",

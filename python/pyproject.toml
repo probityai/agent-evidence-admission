@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-evidence-admission"
+version = "0.1.0"
+description = "Check that an artifact has the digest its compliance document, SBOM or attestation names."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "Sankalp Gilda" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.urls]
+Source = "https://github.com/probityai/agent-evidence-admission"
+Documentation = "https://github.com/probityai/agent-evidence-admission/blob/main/python/README.md"
+
+[project.scripts]
+agent-evidence-admission = "agent_evidence_admission.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_evidence_admission"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+filterwarnings = ["error"]
