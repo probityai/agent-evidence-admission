@@ -58,7 +58,7 @@ jobs:
           "$RUNNER_TEMP/spend-env/bin/python" -I -B consumers/spend-reservation/verify_replay.py --native "$RUNNER_TEMP/spend-evidence/native" --verify-checkout verify-selected --output "$RUNNER_TEMP/spend-evidence/verify" > "$RUNNER_TEMP/spend-evidence/verify.stdout" 2> "$RUNNER_TEMP/spend-evidence/verify.stderr"
       - name: Retain original source, selections, wheels and decisions
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: spend-reservation-originals-${{ github.sha }}
           path: ${{ runner.temp }}/spend-evidence
